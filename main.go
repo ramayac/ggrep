@@ -18,7 +18,7 @@ const (
 	version      = 0.1
 	constAsterix = "-all"
 	paramSilent  = "-s"
-	usageMessage = "Usage: ./ggrep regex [ext|-all] [lineas] [workers] [-s]"
+	usageMessage = "Usage: ./ggrep regex [ext|-all] [lines] [workers] [-s]"
 	outFilename  = "out.txt"
 )
 
