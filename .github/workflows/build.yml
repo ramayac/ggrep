@@ -1,0 +1,29 @@
+name: Build GGrep Binaries
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+
+jobs:
+  build:
+    name: Compile for Linux & Mac
+    runs-on: ubuntu-latest
+    container: golang:1.23-alpine
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Build for Kubuntu (Linux AMD64)
+        run: GOOS=linux GOARCH=amd64 go build -v -o ggrep-linux main.go
+
+      - name: Build for Mac (Darwin ARM64)
+        run: GOOS=darwin GOARCH=arm64 go build -v -o ggrep-mac main.go
+
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggrep-binaries
+          path: |
+            ggrep-linux
+            ggrep-mac
+          retention-days: 5
