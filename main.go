@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +17,7 @@ const (
 	version      = 0.1
 	constAsterix = "-all"
 	paramSilent  = "-s"
-	usageMessage = "Usage: ./ggrep regex [ext|-all] [lines] [workers] [-s]"
+	usageMessage = "Usage: ./ggrep regex [ext|-all] [lines] [-s]"
 	outFilename  = "out.txt"
 )
 
@@ -98,15 +97,13 @@ func (app *App) run(args []string) {
 
 	var regexStr, ext, silent string
 	lines := 1
-	workers := runtime.NumCPU()
 
 	// Acceptable forms:
 	// 2 args: regex ext
 	// 3 args: regex ext lines OR regex ext -s
-	// 4 args: regex ext lines workers OR regex ext lines -s
-	// 5 args: regex ext lines workers -s
+	// 4 args: regex ext lines -s
 
-	if len(args) < 2 || len(args) > 5 {
+	if len(args) < 2 || len(args) > 4 {
 		fmt.Fprintln(os.Stderr, usageMessage)
 		return
 	}
@@ -129,33 +126,18 @@ func (app *App) run(args []string) {
 		}
 	}
 
-	if len(args) >= 4 {
-		// args[3] may be workers (number) or silent
+	if len(args) == 4 {
 		if args[3] == paramSilent {
 			silent = args[3]
-		} else if v, err := strconv.Atoi(args[3]); err == nil {
-			workers = v
 		} else {
-			fmt.Fprintln(os.Stderr, "Workers must be a valid number or -s")
+			fmt.Fprintln(os.Stderr, "Unknown parameter: ", args[3])
 			return
 		}
 	}
 
-	if len(args) == 5 {
-		if args[4] == paramSilent {
-			silent = args[4]
-		} else {
-			fmt.Fprintln(os.Stderr, "Unknown parameter: ", args[4])
-			return
-		}
-	}
-
-	// Clamp workers
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > runtime.NumCPU() {
-		workers = runtime.NumCPU()
+	if len(args) >= 5 {
+		fmt.Fprintln(os.Stderr, "Too many arguments")
+		return
 	}
 
 	if strings.TrimSpace(regexStr) == "" {
