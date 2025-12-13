@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	version      = 1.0
+	version      = 0.1
 	constAsterix = "-all"
 	paramSilent  = "-s"
-	messageUso   = "Uso: ./ggrep regex [ext|-all] [lineas] [workers] [-s]"
+	usageMessage = "Usage: ./ggrep regex [ext|-all] [lineas] [workers] [-s]"
 	outFilename  = "out.txt"
 )
 
@@ -82,7 +82,7 @@ func main() {
 	logger.Log("*                                      *")
 	logger.Log(fmt.Sprintf("*   Go Grep, version %.1f               *", version))
 	logger.Log("*                                      *")
-	logger.Log("* Autor: Rodrigo Amaya, @ramayac, 2025 *")
+	logger.Log("* Author: @ramayac, 2025               *")
 	logger.Log("****************************************")
 	logger.LogEmpty()
 
@@ -92,7 +92,7 @@ func main() {
 
 func (app *App) run(args []string) {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, messageUso)
+		fmt.Fprintln(os.Stderr, usageMessage)
 		return
 	}
 
@@ -107,7 +107,7 @@ func (app *App) run(args []string) {
 	// 5 args: regex ext lines workers -s
 
 	if len(args) < 2 || len(args) > 5 {
-		fmt.Fprintln(os.Stderr, messageUso)
+		fmt.Fprintln(os.Stderr, usageMessage)
 		return
 	}
 
@@ -124,7 +124,7 @@ func (app *App) run(args []string) {
 				lines = v
 			}
 		} else {
-			fmt.Fprintln(os.Stderr, "Las lineas deben ser un número valido.")
+			fmt.Fprintln(os.Stderr, "Lines must be a valid number.")
 			return
 		}
 	}
@@ -136,7 +136,7 @@ func (app *App) run(args []string) {
 		} else if v, err := strconv.Atoi(args[3]); err == nil {
 			workers = v
 		} else {
-			fmt.Fprintln(os.Stderr, "Workers debe ser un número valido o -s")
+			fmt.Fprintln(os.Stderr, "Workers must be a valid number or -s")
 			return
 		}
 	}
@@ -145,7 +145,7 @@ func (app *App) run(args []string) {
 		if args[4] == paramSilent {
 			silent = args[4]
 		} else {
-			fmt.Fprintln(os.Stderr, "Parámetro desconocido: ", args[4])
+			fmt.Fprintln(os.Stderr, "Unknown parameter: ", args[4])
 			return
 		}
 	}
@@ -159,19 +159,19 @@ func (app *App) run(args []string) {
 	}
 
 	if strings.TrimSpace(regexStr) == "" {
-		fmt.Fprintln(os.Stderr, "Falta la expresión regular o la cadena a buscar")
+		fmt.Fprintln(os.Stderr, "Missing regular expression or search string")
 		return
 	}
 
 	if strings.TrimSpace(ext) == "" {
-		fmt.Fprintln(os.Stderr, "Falta la extension de archivo")
+		fmt.Fprintln(os.Stderr, "Missing file extension")
 		return
 	} else if ext == constAsterix {
-		fmt.Fprintln(os.Stderr, "ADVERTENCIA: Se tomarán todos los archivos encontrados")
+		fmt.Fprintln(os.Stderr, "WARNING: All found files will be processed")
 	}
 
 	if lines <= 0 {
-		fmt.Fprintln(os.Stderr, "Las lineas deben ser > 1.")
+		fmt.Fprintln(os.Stderr, "Lines must be > 1.")
 		lines = 1 // Safety default
 	}
 
@@ -182,7 +182,7 @@ func (app *App) run(args []string) {
 	// Compile regex
 	r, err := regexp.Compile(regexStr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error en regex: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error in regex: %v\n", err)
 		return
 	}
 	app.regex = r
@@ -193,7 +193,7 @@ func (app *App) run(args []string) {
 	currentDir := "."
 	app.startTime = time.Now()
 
-	app.logger.Log(fmt.Sprintf("Inicia la busqueda de '%s', VERBOSE: %v, lineas : %d",
+	app.logger.Log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d",
 		regexStr, flagBeVerbose, lines))
 
 	// Determine executable name for self-exclusion
@@ -235,12 +235,12 @@ func (app *App) run(args []string) {
 	}
 
 	elapsed := time.Since(app.startTime)
-	app.logger.Log(fmt.Sprintf("\n\rFin (%d milis)", elapsed.Milliseconds()))
+	app.logger.Log(fmt.Sprintf("\n\rFinished (%d ms)", elapsed.Milliseconds()))
 }
 
 func (app *App) processFile(path string) {
 	if flagBeVerbose {
-		app.logger.Log(fmt.Sprintf("* Buscando en el archivo: '%s' *", path))
+		app.logger.Log(fmt.Sprintf("* Searching in file: '%s' *", path))
 	}
 
 	// Check if Zip
@@ -276,7 +276,7 @@ func (app *App) readZip(path string) {
 		}
 
 		if flagBeVerbose {
-			app.logger.Log(fmt.Sprintf("*** Revisando el archivo comprimido: '%s' ***", f.Name))
+			app.logger.Log(fmt.Sprintf("*** Scanning compressed file: '%s' ***", f.Name))
 		}
 
 		rc, err := f.Open()
