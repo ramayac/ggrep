@@ -4,7 +4,7 @@ BINARY_NAME=ggrep
 all: build
 
 build:
-	go build -o $(BINARY_NAME) main.go
+	go build -o $(BINARY_NAME) .
 
 # Clean output file and binary
 clean:
