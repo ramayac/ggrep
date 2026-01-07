@@ -21,3 +21,7 @@ build-linux:
 build-mac:
 	GOOS=darwin GOARCH=arm64 go build -o $(BINARY_NAME)-mac main.go
 
+
+# Run tests
+test:
+	go test -v ./...

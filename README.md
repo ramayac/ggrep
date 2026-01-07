@@ -32,7 +32,8 @@ My coworker was happy, I was happy, and my BSA did not belive we could do it tha
 
 Now it's 2025, and I like Go, first thing I do? Give new life to the tool that saved me so many hours searching strings in GB of log files.
 
-GGrep is a 1:1 port of JGrep, nothing fancy, it's just a funny little tool that saved me a lot of time, and who knows, maybe it will save you some time too.
+GGrep _was_ a 1:1 port of JGrep, but a couple of commits ago I decided to just do a more "golang" implementation.
+Anyway the point is to have fun, have my tool updated and share it, maybe it will help someone else too.
 
 ## Usage
 
@@ -48,7 +49,7 @@ You will get a file called `out.txt` with the results.
 ### Arguments
 
 *   `regex`: The regular expression or string to search for.
-*   `ext` or `-all`: File extension to filter by (e.g., `.go`, `.txt`) or `-all` to search all files.
+*   `ext` or `--all`: File extension to filter by (e.g., `.go`, `.txt`) or `--all` to search all files.
 *   `lines`: (Optional) Number of context lines to display. Defaults to 1.
 *   `-s`: (Optional) Silent mode.
 
@@ -59,4 +60,12 @@ You can build the project using the provided Makefile or standard Go tools:
 
 ```bash
 make build
+```
+
+## Test
+
+Well, just do:
+
+```bash
+make test
 ```

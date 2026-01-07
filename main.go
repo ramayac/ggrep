@@ -2,249 +2,194 @@ package main
 
 import (
 	"archive/zip"
-	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	version      = 0.1
-	constAsterix = "-all"
-	paramSilent  = "-s"
-	usageMessage = "Usage: ./ggrep regex [ext|-all] [lines] [-s]"
-	outFilename  = "out.txt"
+	version     = 0.2
+	allFlag     = "--all"
+	outFilename = "out.txt"
 )
 
-// Global flags
-var flagBeVerbose = true
-
-// Logger struct
-type Logger struct {
-	file *os.File
-	bw   *bufio.Writer
-}
-
-func NewLogger() (*Logger, error) {
-	f, err := os.Create(outFilename)
-	if err != nil {
-		return nil, err
-	}
-	return &Logger{
-		file: f,
-		bw:   bufio.NewWriter(f),
-	}, nil
-}
-
-func (l *Logger) Log(msg string) {
-	if flagBeVerbose {
-		fmt.Println(msg)
-	}
-	l.bw.WriteString(msg + "\r\n")
-}
-
-func (l *Logger) LogEmpty() {
-	if flagBeVerbose {
-		fmt.Println()
-	}
-	l.bw.WriteString("\r\n")
-}
-
-func (l *Logger) Close() {
-	l.bw.Flush()
-	l.file.Close()
-}
-
-// Main logic container
+// App configures the application
 type App struct {
-	logger       *Logger
-	regex        *regexp.Regexp
-	ext          string
-	contextLines int
-	startTime    time.Time
+	searcher    *Searcher
+	ext         string
+	isVerbose   bool
+	output      io.Writer
+	outputFile  *os.File
+	matcherName string // Name of the executable to exclude
 }
 
 func main() {
-	logger, err := NewLogger()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		return
-	}
-	defer logger.Close()
+	// Parse Flags
+	var (
+		flagSilent = flag.Bool("s", false, "Silent mode (no console output)")
+		flagLines  = flag.Int("lines", 1, "Number of context lines")
+		flagExt    = flag.String("ext", "", "File extension filter or -all")
+	)
 
-	logger.Log("****************************************")
-	logger.Log("*                                      *")
-	logger.Log(fmt.Sprintf("*   Go Grep, version %.1f               *", version))
-	logger.Log("*                                      *")
-	logger.Log("* Author: @ramayac, 2025               *")
-	logger.Log("****************************************")
-	logger.LogEmpty()
-
-	app := &App{logger: logger}
-	app.run(os.Args[1:])
-}
-
-func (app *App) run(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return
+	// Custom usage message to match original vaguely, but more standard
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <regex> [extension]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExample: %s \"func\" .go -lines=2\n", os.Args[0])
 	}
 
-	var regexStr, ext, silent string
-	lines := 1
+	flag.Parse()
 
-	// Acceptable forms:
-	// 2 args: regex ext
-	// 3 args: regex ext lines OR regex ext -s
-	// 4 args: regex ext lines -s
+	// Positional arguments override checks (for backward compatibility where possible,
+	// but standardizing on flags is better. The plan said we'd use flags).
+	// However, the user might still type `./ggrep regex ext`.
+	// Let's try to handle mixed args if possible, or just strict flags.
+	// Given the instructions, I'll stick to a clean flag implementation but handle the positional 'regex' and 'ext' if provided purely positionally to be nice.
 
-	if len(args) < 2 || len(args) > 4 {
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return
+	args := flag.Args()
+	if len(args) < 1 {
+		flag.Usage()
+		os.Exit(1)
 	}
 
-	regexStr = args[0]
-	ext = args[1]
+	regexStr := args[0]
 
-	// Parse optional args
-	if len(args) >= 3 {
-		// args[2] may be lines or silent
-		if args[2] == paramSilent {
-			silent = args[2]
-		} else if v, err := strconv.Atoi(args[2]); err == nil {
-			if v > 0 {
-				lines = v
-			}
-		} else {
-			fmt.Fprintln(os.Stderr, "Lines must be a valid number.")
-			return
-		}
+	// If ext wasn't provided via flag, check if it's the second arg
+	ext := *flagExt
+	if ext == "" && len(args) > 1 {
+		ext = args[1]
+	}
+	if ext == "" {
+		fmt.Fprintln(os.Stderr, "Missing file extension. Use -ext or provide it as second argument.")
+		os.Exit(1)
 	}
 
-	if len(args) == 4 {
-		if args[3] == paramSilent {
-			silent = args[3]
-		} else {
-			fmt.Fprintln(os.Stderr, "Unknown parameter: ", args[3])
-			return
-		}
-	}
-
-	if len(args) >= 5 {
-		fmt.Fprintln(os.Stderr, "Too many arguments")
-		return
-	}
-
-	if strings.TrimSpace(regexStr) == "" {
-		fmt.Fprintln(os.Stderr, "Missing regular expression or search string")
-		return
-	}
-
-	if strings.TrimSpace(ext) == "" {
-		fmt.Fprintln(os.Stderr, "Missing file extension")
-		return
-	} else if ext == constAsterix {
-		fmt.Fprintln(os.Stderr, "WARNING: All found files will be processed")
-	}
-
-	if lines <= 0 {
-		fmt.Fprintln(os.Stderr, "Lines must be > 1.")
-		lines = 1 // Safety default
-	}
-
-	if silent == paramSilent {
-		flagBeVerbose = false
-	}
-
-	// Compile regex
+	// Validate Regexp
 	r, err := regexp.Compile(regexStr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error in regex: %v\n", err)
-		return
-	}
-	app.regex = r
-	app.ext = ext
-	app.contextLines = lines
-
-	// Start search
-	currentDir := "."
-	app.startTime = time.Now()
-
-	app.logger.Log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d",
-		regexStr, flagBeVerbose, lines))
-
-	// Determine executable name for self-exclusion
-	exePath, err := os.Executable()
-	var exeName string
-	if err == nil {
-		exeName = filepath.Base(exePath)
+		os.Exit(1)
 	}
 
-	// Walk directory (Recursion)
-	err = filepath.Walk(currentDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		// Filter logic
-		if strings.Contains(path, outFilename) || (exeName != "" && strings.Contains(path, exeName)) {
-			return nil
-		}
-
-		shouldProcess := false
-		if app.ext == constAsterix {
-			shouldProcess = true
-		} else if strings.Contains(info.Name(), app.ext) {
-			shouldProcess = true
-		}
-
-		if shouldProcess {
-			app.processFile(path)
-		}
-		return nil
-	})
-
+	// Setup Output
+	f, err := os.Create(outFilename)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error scanning directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
+		os.Exit(1)
+	}
+	defer f.Close()
+
+	// Setup App
+	app := &App{
+		searcher: &Searcher{
+			Regex:        r,
+			ContextLines: *flagLines,
+		},
+		ext:        ext,
+		isVerbose:  !*flagSilent,
+		output:     f, // We write to file primarily
+		outputFile: f,
 	}
 
-	elapsed := time.Since(app.startTime)
-	app.logger.Log(fmt.Sprintf("\n\rFinished (%d ms)", elapsed.Milliseconds()))
+	// Get self executable name
+	if exe, err := os.Executable(); err == nil {
+		app.matcherName = filepath.Base(exe)
+	}
+
+	// Banner
+	app.log("****************************************")
+	app.log(fmt.Sprintf("*   Go Grep, version %.1f               *", version))
+	app.log("*                                      *")
+	app.log("****************************************")
+	app.log("")
+	app.log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d", regexStr, app.isVerbose, *flagLines))
+
+	startTime := time.Now()
+
+	// Walk
+	err = filepath.Walk(".", app.walkFn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
+	}
+
+	elapsed := time.Since(startTime)
+	app.log(fmt.Sprintf("\n\rFinished (%d ms)", elapsed.Milliseconds()))
+}
+
+// log writes to both file and stdout (if verbose)
+func (app *App) log(msg string) {
+	if app.isVerbose {
+		fmt.Println(msg)
+	}
+	// The original used \r\n, preserving that for now
+	fmt.Fprintf(app.outputFile, "%s\r\n", msg)
+}
+
+func (app *App) walkFn(path string, info os.FileInfo, err error) error {
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return nil
+	}
+
+	// Filters
+	if strings.Contains(path, outFilename) {
+		return nil
+	}
+	if app.matcherName != "" && strings.Contains(path, app.matcherName) {
+		return nil
+	}
+
+	// Extension check
+	shouldProcess := false
+	if app.ext == allFlag {
+		shouldProcess = true
+	} else if strings.Contains(info.Name(), app.ext) {
+		shouldProcess = true
+	}
+
+	if shouldProcess {
+		app.processFile(path)
+	}
+
+	return nil
 }
 
 func (app *App) processFile(path string) {
-	if flagBeVerbose {
-		app.logger.Log(fmt.Sprintf("* Searching in file: '%s' *", path))
+	if app.isVerbose {
+		fmt.Printf("* Searching in file: '%s' *\r\n", path)
+		fmt.Fprintf(app.outputFile, "* Searching in file: '%s' *\r\n", path)
 	}
 
-	// Check if Zip
 	if strings.HasSuffix(strings.ToLower(path), ".zip") {
-		app.readZip(path)
+		app.processZip(path)
 	} else {
-		app.readTextFile(path)
+		app.processText(path)
 	}
 }
 
-func (app *App) readTextFile(path string) {
-	file, err := os.Open(path)
+func (app *App) processText(path string) {
+	f, err := os.Open(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s: %v\n", path, err)
+		fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", path, err)
 		return
 	}
-	defer file.Close()
+	defer f.Close()
 
-	app.scanStream(file, filepath.Base(path))
+	results := app.searcher.ScanStream(f, filepath.Base(path))
+	for _, res := range results {
+		app.log(res)
+	}
 }
 
-func (app *App) readZip(path string) {
+func (app *App) processZip(path string) {
 	r, err := zip.OpenReader(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening zip %s: %v\n", path, err)
@@ -257,68 +202,20 @@ func (app *App) readZip(path string) {
 			continue
 		}
 
-		if flagBeVerbose {
-			app.logger.Log(fmt.Sprintf("*** Scanning compressed file: '%s' ***", f.Name))
+		if app.isVerbose {
+			fmt.Printf("*** Scanning compressed file: '%s' ***\r\n", f.Name)
+			fmt.Fprintf(app.outputFile, "*** Scanning compressed file: '%s' ***\r\n", f.Name)
 		}
 
 		rc, err := f.Open()
 		if err != nil {
 			continue
 		}
-		app.scanStream(rc, f.Name)
+
+		results := app.searcher.ScanStream(rc, f.Name)
+		for _, res := range results {
+			app.log(res)
+		}
 		rc.Close()
 	}
-}
-
-// scanStream handles the logic of reading lines and checking matches
-func (app *App) scanStream(r io.Reader, filename string) {
-	scanner := bufio.NewScanner(r)
-	lineNum := 0
-
-	// Create a custom logic to handle the "print N lines after match" requirement
-	// Since bufio.Scanner doesn't easily allow peeking ahead, we control the flow manually.
-
-	for scanner.Scan() {
-		lineNum++
-		line := scanner.Text()
-
-		if app.match(line, filename, lineNum, true) {
-			// If match found, and we need to print subsequent lines
-			remaining := app.contextLines - 1
-			for remaining > 0 && scanner.Scan() {
-				// Note: Original code increments line count but prints subsequent lines
-				// without file prefix in the secondary loop?
-				// The original code calls match(..., false) which formats differently.
-				lineNum++
-				nextLine := scanner.Text()
-				app.match(nextLine, filename, lineNum, false)
-				remaining--
-			}
-		}
-	}
-}
-
-func (app *App) match(line string, filename string, lineNum int, isSearch bool) bool {
-	if line == "" {
-		return false
-	}
-
-	var output string
-
-	if isSearch {
-		// Logic from Grep.search()
-		// (Original code had excludeList logic here, but it was initialized empty in Main)
-		if app.regex.MatchString(line) {
-			output = fmt.Sprintf("    %s:%d:%s", filename, lineNum, line)
-		}
-	} else {
-		// Logic from Lector.match(..., false)
-		output = fmt.Sprintf("    %s:%d:%s", filename, lineNum, line)
-	}
-
-	if output != "" {
-		app.logger.Log(output)
-		return true // Match found or forced print
-	}
-	return false
 }
