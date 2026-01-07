@@ -9,15 +9,19 @@ jobs:
   build:
     name: Compile for Linux & Mac
     runs-on: ubuntu-latest
-    container: golang:1.23-alpine
+    container: golang:1.24-alpine
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Install Make
+        run: apk add --no-cache make
+
       - name: Build for Kubuntu (Linux AMD64)
-        run: GOOS=linux GOARCH=amd64 go build -v -o ggrep-linux main.go
+        run: make build-linux
 
       - name: Build for Mac (Darwin ARM64)
-        run: GOOS=darwin GOARCH=arm64 go build -v -o ggrep-mac main.go
+        run: make build-mac
 
       - name: Upload Binaries
         uses: actions/upload-artifact@v4

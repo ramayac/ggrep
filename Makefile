@@ -16,10 +16,10 @@ run: build
 
 # Cross compilation for other platforms if needed
 build-linux:
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY_NAME)-linux main.go
+	GOOS=linux GOARCH=amd64 go build -o $(BINARY_NAME)-linux .
 
 build-mac:
-	GOOS=darwin GOARCH=arm64 go build -o $(BINARY_NAME)-mac main.go
+	GOOS=darwin GOARCH=arm64 go build -o $(BINARY_NAME)-mac .
 
 
 # Run tests
