@@ -8,14 +8,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	version     = 0.2
-	allFlag     = "--all"
-	outFilename = "out.txt"
+	version = 0.2
+	allFlag = "--all"
 )
 
 // App configures the application
@@ -24,19 +25,22 @@ type App struct {
 	ext         string
 	isVerbose   bool
 	output      io.Writer
-	outputFile  *os.File
 	matcherName string // Name of the executable to exclude
+	wg          sync.WaitGroup
+	filesChan   chan string
+	mu          sync.Mutex // For synchronized output
 }
 
 func main() {
 	// Parse Flags
 	var (
-		flagSilent = flag.Bool("s", false, "Silent mode (no console output)")
-		flagLines  = flag.Int("lines", 1, "Number of context lines")
-		flagExt    = flag.String("ext", "", "File extension filter or -all")
+		flagSilent  = flag.Bool("s", false, "Silent mode (no console output)")
+		flagLines   = flag.Int("lines", 1, "Number of context lines")
+		flagExt     = flag.String("ext", "", "File extension filter or --all")
+		flagWorkers = flag.Int("w", runtime.NumCPU(), "Number of concurrent workers")
 	)
 
-	// Custom usage message to match original vaguely, but more standard
+	// Custom usage message
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <regex> [extension]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Flags:\n")
@@ -46,12 +50,6 @@ func main() {
 
 	flag.Parse()
 
-	// Positional arguments override checks (for backward compatibility where possible,
-	// but standardizing on flags is better. The plan said we'd use flags).
-	// However, the user might still type `./ggrep regex ext`.
-	// Let's try to handle mixed args if possible, or just strict flags.
-	// Given the instructions, I'll stick to a clean flag implementation but handle the positional 'regex' and 'ext' if provided purely positionally to be nice.
-
 	args := flag.Args()
 	if len(args) < 1 {
 		flag.Usage()
@@ -60,7 +58,6 @@ func main() {
 
 	regexStr := args[0]
 
-	// If ext wasn't provided via flag, check if it's the second arg
 	ext := *flagExt
 	if ext == "" && len(args) > 1 {
 		ext = args[1]
@@ -77,24 +74,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Setup Output
-	f, err := os.Create(outFilename)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating output file: %v\n", err)
-		os.Exit(1)
-	}
-	defer f.Close()
-
 	// Setup App
 	app := &App{
 		searcher: &Searcher{
 			Regex:        r,
 			ContextLines: *flagLines,
 		},
-		ext:        ext,
-		isVerbose:  !*flagSilent,
-		output:     f, // We write to file primarily
-		outputFile: f,
+		ext:       ext,
+		isVerbose: !*flagSilent,
+		output:    os.Stdout,
+		filesChan: make(chan string, 100),
 	}
 
 	// Get self executable name
@@ -108,9 +97,15 @@ func main() {
 	app.log("*                                      *")
 	app.log("****************************************")
 	app.log("")
-	app.log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d", regexStr, app.isVerbose, *flagLines))
+	app.log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d, workers: %d", regexStr, app.isVerbose, *flagLines, *flagWorkers))
 
 	startTime := time.Now()
+
+	// Start workers
+	for i := 0; i < *flagWorkers; i++ {
+		app.wg.Add(1)
+		go app.worker()
+	}
 
 	// Walk
 	err = filepath.Walk(".", app.walkFn)
@@ -118,17 +113,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error walking directory: %v\n", err)
 	}
 
+	close(app.filesChan)
+	app.wg.Wait()
+
 	elapsed := time.Since(startTime)
-	app.log(fmt.Sprintf("\n\rFinished (%d ms)", elapsed.Milliseconds()))
+	app.log(fmt.Sprintf("\nFinished (%d ms)", elapsed.Milliseconds()))
 }
 
-// log writes to both file and stdout (if verbose)
+func (app *App) worker() {
+	defer app.wg.Done()
+	for path := range app.filesChan {
+		app.processFile(path)
+	}
+}
+
 func (app *App) log(msg string) {
 	if app.isVerbose {
-		fmt.Println(msg)
+		app.mu.Lock()
+		fmt.Fprintln(app.output, msg)
+		app.mu.Unlock()
 	}
-	// The original used \r\n, preserving that for now
-	fmt.Fprintf(app.outputFile, "%s\r\n", msg)
 }
 
 func (app *App) walkFn(path string, info os.FileInfo, err error) error {
@@ -140,9 +144,6 @@ func (app *App) walkFn(path string, info os.FileInfo, err error) error {
 	}
 
 	// Filters
-	if strings.Contains(path, outFilename) {
-		return nil
-	}
 	if app.matcherName != "" && strings.Contains(path, app.matcherName) {
 		return nil
 	}
@@ -151,12 +152,12 @@ func (app *App) walkFn(path string, info os.FileInfo, err error) error {
 	shouldProcess := false
 	if app.ext == allFlag {
 		shouldProcess = true
-	} else if strings.Contains(info.Name(), app.ext) {
+	} else if strings.HasSuffix(info.Name(), app.ext) {
 		shouldProcess = true
 	}
 
 	if shouldProcess {
-		app.processFile(path)
+		app.filesChan <- path
 	}
 
 	return nil
@@ -164,8 +165,7 @@ func (app *App) walkFn(path string, info os.FileInfo, err error) error {
 
 func (app *App) processFile(path string) {
 	if app.isVerbose {
-		fmt.Printf("* Searching in file: '%s' *\r\n", path)
-		fmt.Fprintf(app.outputFile, "* Searching in file: '%s' *\r\n", path)
+		app.log(fmt.Sprintf("* Searching in file: '%s' *", path))
 	}
 
 	if strings.HasSuffix(strings.ToLower(path), ".zip") {
@@ -183,10 +183,9 @@ func (app *App) processText(path string) {
 	}
 	defer f.Close()
 
-	results := app.searcher.ScanStream(f, filepath.Base(path))
-	for _, res := range results {
+	app.searcher.ScanStream(f, filepath.Base(path), func(res string) {
 		app.log(res)
-	}
+	})
 }
 
 func (app *App) processZip(path string) {
@@ -203,8 +202,7 @@ func (app *App) processZip(path string) {
 		}
 
 		if app.isVerbose {
-			fmt.Printf("*** Scanning compressed file: '%s' ***\r\n", f.Name)
-			fmt.Fprintf(app.outputFile, "*** Scanning compressed file: '%s' ***\r\n", f.Name)
+			app.log(fmt.Sprintf("*** Scanning compressed file: '%s' ***", f.Name))
 		}
 
 		rc, err := f.Open()
@@ -212,10 +210,9 @@ func (app *App) processZip(path string) {
 			continue
 		}
 
-		results := app.searcher.ScanStream(rc, f.Name)
-		for _, res := range results {
+		app.searcher.ScanStream(rc, f.Name, func(res string) {
 			app.log(res)
-		}
+		})
 		rc.Close()
 	}
 }

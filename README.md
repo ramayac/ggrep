@@ -32,27 +32,41 @@ My coworker was happy, I was happy, and my BSA did not belive we could do suppor
 
 Now it's 2025, and I like Go, first thing I do? Give new life to the tool that saved me so many hours searching strings in GB of log files.
 
-GGrep _was_ a 1:1 port of JGrep, but a couple of commits ago I decided to just do a more "golang" implementation.
-Anyway the point is to have fun, have my tool updated and share it, maybe it will help someone else too.
+The current version of GGrep is a high-performance, concurrent implementation that fixes several bugs from the original prototype and adds modern CLI features.
+
+## Features
+
+- **Concurrent Searching:** Utilizes multiple CPU cores to scan files in parallel.
+- **Transparent Zip Support:** Searches within `.zip` archives without extraction.
+- **Streaming Output:** Memory-efficient scanning using a callback-based approach.
+- **Standard CLI Behavior:** Writes results to `stdout`, making it pipe-friendly.
 
 ## Usage
 
-Put ggrep in the folder where your logs files are.
-Then run:
+Run `ggrep` within the directory you want to search:
 
 ```bash
-./ggrep [0-9][0-9][0-9] *.log
+./ggrep -lines=2 "ERROR" .log
 ```
 
-You will get a file called `out.txt` with the results.
+### Flags
 
-### Arguments
+- `-ext`: File extension filter (e.g., `.log`, `.txt`). Can also be provided as a positional argument. Use `--all` to search everything.
+- `-lines`: Number of context lines to display (default: 1).
+- `-w`: Number of concurrent workers (defaults to number of CPUs).
+- `-s`: Silent mode (no console output, primarily for scripts where you might redirect stdout).
 
-*   `regex`: The regular expression or string to search for.
-*   `ext` or `--all`: File extension to filter by (e.g., `.log`, `.txt`) or `--all` to search all files.
-*   `lines`: (Optional) Number of context lines to display. Defaults to 1.
-*   `-s`: (Optional) Silent mode.
+### Examples
 
+Search for "func" in all `.go` files with 1 line of context:
+```bash
+./ggrep -lines=1 "func" .go
+```
+
+Search for a pattern across all files using 8 workers:
+```bash
+./ggrep -w 8 "TODO" --all
+```
 
 ## Build
 
