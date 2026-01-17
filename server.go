@@ -20,6 +20,12 @@ type ServerConfig struct {
 var globalConfig atomic.Value
 var configMutex sync.Mutex
 
+// In-memory buffer for matches
+var matchBuffer []string
+var bufferMutex sync.Mutex
+
+const maxBufferSize = 1000
+
 func startServer(port string) error {
 	// 1. Set default configuration
 	initialRegex := regexp.MustCompile(".*") // Match everything by default
@@ -35,6 +41,9 @@ func startServer(port string) error {
 
 	// 3. Control Handler (Update Regex/Target)
 	mux.HandleFunc("/config", handleConfig)
+
+	// 4. Output Handler (Read buffered matches)
+	mux.HandleFunc("/out", handleOut)
 
 	log.Printf("Grep Service starting on port %s", port)
 	return http.ListenAndServe(":"+port, mux)
@@ -65,6 +74,15 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 	searcher.ScanStream(r.Body, "stream", func(res string) {
 		// Log to stdout (always handy for docker logs)
 		fmt.Println(res)
+
+		// Append to in-memory buffer
+		bufferMutex.Lock()
+		if len(matchBuffer) >= maxBufferSize {
+			// Drop oldest if full (simple ring buffer-ish behavior)
+			matchBuffer = matchBuffer[1:]
+		}
+		matchBuffer = append(matchBuffer, res)
+		bufferMutex.Unlock()
 
 		// If target URL is set, forward it
 		if cfg.TargetURL != "" {
@@ -139,4 +157,21 @@ func forwardMatch(line string, url string) {
 		return
 	}
 	defer resp.Body.Close()
+}
+
+func handleOut(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Use GET", http.StatusMethodNotAllowed)
+		return
+	}
+
+	bufferMutex.Lock()
+	// Copy buffer to avoid holding lock while writing
+	// (or just json encode directly if fast enough, but copy is safer for concurrency)
+	matches := make([]string, len(matchBuffer))
+	copy(matches, matchBuffer)
+	bufferMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(matches)
 }

@@ -43,4 +43,5 @@ manual-test:
 	@echo "\nSending logs..."
 	curl -X POST -d "System OK" http://localhost:8080/ingest
 	curl -X POST -d "System ERROR: Critical failure" http://localhost:8080/ingest
-	@echo "\nCheck docker logs to see the filtered output."
+	@echo "\nFetching filtered logs from /out..."
+	curl -s http://localhost:8080/out | jq .
