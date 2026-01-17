@@ -25,3 +25,13 @@ build-mac:
 # Run tests
 test:
 	go test -v ./...
+
+# Docker targets
+docker-build:
+	docker build -t ggrep:distroless .
+
+docker-run:
+	docker run -p 8080:8080 ggrep:distroless
+
+docker-compose:
+	docker-compose up
