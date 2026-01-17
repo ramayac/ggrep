@@ -1,4 +1,5 @@
 BINARY_NAME=ggrep
+REPO ?= docker.io/library
 
 # Default target
 all: build
@@ -28,10 +29,18 @@ test:
 
 # Docker targets
 docker-build:
-	docker build -t ggrep:distroless .
+	docker build -t $(REPO)/$(BINARY_NAME):distroless .
 
 docker-run:
-	docker run -p 8080:8080 ggrep:distroless
+	docker run -p 8080:8080 $(REPO)/$(BINARY_NAME):distroless
 
 docker-compose:
-	docker-compose up
+	REPO=$(REPO) docker compose up
+
+manual-test:
+	@echo "Configuring grep service to match 'ERROR'..."
+	curl -X POST "http://localhost:8080/config?regex=ERROR"
+	@echo "\nSending logs..."
+	curl -X POST -d "System OK" http://localhost:8080/ingest
+	curl -X POST -d "System ERROR: Critical failure" http://localhost:8080/ingest
+	@echo "\nCheck docker logs to see the filtered output."

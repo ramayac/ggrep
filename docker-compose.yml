@@ -1,7 +1,7 @@
 services:
   ggrep:
     build: .
-    image: ggrep:distroless
+    image: ${REPO:-docker.io/library}/ggrep:distroless
     ports:
       - "8080:8080"
     environment:

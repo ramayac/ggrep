@@ -54,22 +54,7 @@ curl -X POST "http://localhost:8080/config?regex=CRITICAL&target=http://example.
 
 > **Security Note**: The regex input is limited to 100 characters.
 
-### Docker (Distroless)
-
-Build and run a tiny, secure container:
-
-```bash
-docker build -t ggrep:distroless .
-docker run -p 8080:8080 ggrep:distroless
-```
-
-Or use Docker Compose:
-
-```bash
-docker-compose up
-```
-
-### Examples
+### Usage Examples
 
 Search for "func" in all `.go` files with 1 line of context:
 ```bash
@@ -81,18 +66,22 @@ Search for a pattern across all files:
 ./ggrep "TODO" --all
 ```
 
-## Build
+## Makefile Targets
 
-You can build the project using the provided Makefile or standard Go tools:
+You can use the provided `Makefile` to manage the project:
 
+| Target           | Description                                      |
+| ---------------- | ------------------------------------------------ |
+| `make build`     | Compiles the `ggrep` binary.                     |
+| `make clean`     | Removes the binary and temporary files.          |
+| `make test`      | Runs the Go test suite.                          |
+| `make run`       | Builds and runs a local generic test.            |
+| `make docker-build` | Builds the distroless Docker image.           |
+| `make docker-run`| Runs the Docker container on port 8080.          |
+| `make docker-compose` | Starts the service using Docker Compose.    |
+| `make manual-test` | Performs a curl-based test against the running server. |
+
+You can override the Docker repository by setting the `REPO` variable:
 ```bash
-make build
-```
-
-## Test
-
-Well, just do:
-
-```bash
-make test
+make docker-build REPO=myregistry.com/user
 ```
