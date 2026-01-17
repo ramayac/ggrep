@@ -5,6 +5,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - G_DEBUG=true # Example env var if we supported it, but we stick to CLI args/config for now
+      - G_DEBUG=true
+      - GGREP_BUFFER_SIZE=2000 # Configurable buffer size
     # We can override the command if needed, but default is server mode
     # command: ["/ggrep", "--server", "--port=8080"]

@@ -22,5 +22,8 @@ COPY --from=builder /build/ggrep /ggrep
 # Expose ports
 EXPOSE 8080 
 
+# Default buffer size
+ENV GGREP_BUFFER_SIZE=1000 
+
 # Default to server mode
 ENTRYPOINT ["/ggrep", "--server"]

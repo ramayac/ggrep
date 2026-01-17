@@ -53,6 +53,7 @@ curl -X POST "http://localhost:8080/config?regex=CRITICAL&target=http://example.
 ```
 
 > **Security Note**: The regex input is limited to 100 characters.
+> **Configuration**: You can set the internal buffer size (default 1000) using the `GGREP_BUFFER_SIZE` environment variable for the Docker container.
 
 ### Usage Examples
 

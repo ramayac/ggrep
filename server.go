@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
+	"strconv"
 	"sync"
 	"sync/atomic"
 )
@@ -24,9 +26,18 @@ var configMutex sync.Mutex
 var matchBuffer []string
 var bufferMutex sync.Mutex
 
-const maxBufferSize = 1000
+var maxBufferSize = 1000
 
 func startServer(port string) error {
+	// Parse GGREP_BUFFER_SIZE env var
+	if val := os.Getenv("GGREP_BUFFER_SIZE"); val != "" {
+		if s, err := strconv.Atoi(val); err == nil && s > 0 {
+			maxBufferSize = s
+			log.Printf("Configured max buffer size: %d", maxBufferSize)
+		} else {
+			log.Printf("Invalid GGREP_BUFFER_SIZE '%s', using default %d", val, maxBufferSize)
+		}
+	}
 	// 1. Set default configuration
 	initialRegex := regexp.MustCompile(".*") // Match everything by default
 	globalConfig.Store(ServerConfig{
