@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	version = 0.2
+	version = 0.3
 	allFlag = "--all"
 )
 
@@ -34,10 +34,13 @@ type App struct {
 func main() {
 	// Parse Flags
 	var (
-		flagSilent  = flag.Bool("s", false, "Silent mode (no console output)")
-		flagLines   = flag.Int("lines", 1, "Number of context lines")
-		flagExt     = flag.String("ext", "", "File extension filter or --all")
-		flagWorkers = flag.Int("w", runtime.NumCPU(), "Number of concurrent workers")
+		flagSilent = flag.Bool("silent", false, "Silent mode (no console output)")
+		flagLines  = flag.Int("lines", 1, "Number of context lines")
+		flagExt    = flag.String("ext", "", "File extension filter or --all")
+
+		flagVersion = flag.Bool("version", false, "Print version and exit")
+		flagServer  = flag.Bool("server", false, "Run in server mode")
+		flagPort    = flag.String("port", "8080", "Port to run server on")
 	)
 
 	// Custom usage message
@@ -45,10 +48,25 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] <regex> [extension]\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExample: %s \"func\" .go -lines=2\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "\nExample: %s \"func\" .go --lines=2\n", os.Args[0])
 	}
 
 	flag.Parse()
+
+	// Handle Version
+	if *flagVersion {
+		printBanner()
+		return
+	}
+
+	// Handle Server Mode
+	if *flagServer {
+		if err := startServer(*flagPort); err != nil {
+			fmt.Fprintf(os.Stderr, "Server closed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	args := flag.Args()
 	if len(args) < 1 {
@@ -91,18 +109,13 @@ func main() {
 		app.matcherName = filepath.Base(exe)
 	}
 
-	// Banner
-	app.log("****************************************")
-	app.log(fmt.Sprintf("*   Go Grep, version %.1f               *", version))
-	app.log("*                                      *")
-	app.log("****************************************")
-	app.log("")
-	app.log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d, workers: %d", regexStr, app.isVerbose, *flagLines, *flagWorkers))
+	// Only log start message if verbose
+	app.log(fmt.Sprintf("Starting search for '%s', VERBOSE: %v, lines : %d, workers: %d", regexStr, app.isVerbose, *flagLines, runtime.NumCPU()))
 
 	startTime := time.Now()
 
 	// Start workers
-	for i := 0; i < *flagWorkers; i++ {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		app.wg.Add(1)
 		go app.worker()
 	}
@@ -118,6 +131,13 @@ func main() {
 
 	elapsed := time.Since(startTime)
 	app.log(fmt.Sprintf("\nFinished (%d ms)", elapsed.Milliseconds()))
+}
+
+func printBanner() {
+	fmt.Println("***************************************************")
+	fmt.Printf("* GoGrep, version %.1f                             *\n", version)
+	fmt.Println("* Toda la vida es sueño, y los sueños, sueños son. *)                                   *")
+	fmt.Println("***************************************************")
 }
 
 func (app *App) worker() {
